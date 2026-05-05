@@ -151,6 +151,10 @@
     }
     .badge.rss { background: #fff3cd; color: #856404; }
     .badge.ical { background: #d1e7dd; color: #0a3622; }
+    .badge.amtsblatt { background: #dde5ff; color: #2d3a8c; }
+    .filter-bar { display: flex; flex-direction: column; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+    .filter-label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); cursor: pointer; user-select: none; }
+    .filter-label input { accent-color: var(--primary); cursor: pointer; }
 
     /* Main content */
     .main {
@@ -327,6 +331,11 @@
 <div class="layout">
   <nav class="browser" id="browser">
     <div class="browser-header">Feeds durchsuchen</div>
+    <div class="filter-bar">
+      <label class="filter-label"><input type="checkbox" id="filterEvent"      checked> Veranstaltung</label>
+      <label class="filter-label"><input type="checkbox" id="filterNews"       checked> News</label>
+      <label class="filter-label"><input type="checkbox" id="filterAmtsblatt"  checked> Amtsblatt</label>
+    </div>
     <div id="tree"></div>
   </nav>
 
@@ -355,9 +364,10 @@ const state = {
   feeds: [],
   selected: new Set(),
   query: "",
-  searchData: new Map(),   // path → { events, news }
+  searchData: new Map(),   // path → { events, news, amtsblatt }
   searchLoading: false,
   basketOpen: false,
+  filter: { event: true, news: true, amtsblatt: true },
 };
 
 // ── Fetch helpers ──────────────────────────────────────────────────────────
@@ -369,11 +379,12 @@ async function fetchJson(url) {
 
 async function loadFeedData(feed) {
   if (state.searchData.has(feed.path)) return state.searchData.get(feed.path);
-  const [events, news] = await Promise.all([
-    feed.eventsUrl ? fetchJson(feed.eventsUrl) : null,
-    feed.newsUrl   ? fetchJson(feed.newsUrl)   : null,
+  const [events, news, amtsblatt] = await Promise.all([
+    feed.eventsUrl     ? fetchJson(feed.eventsUrl)     : null,
+    feed.newsUrl       ? fetchJson(feed.newsUrl)       : null,
+    feed.amtsblattUrl  ? fetchJson(feed.amtsblattUrl)  : null,
   ]);
-  const data = { events: events?.items ?? [], news: news?.items ?? [] };
+  const data = { events: events?.items ?? [], news: news?.items ?? [], amtsblatt: amtsblatt?.items ?? [] };
   state.searchData.set(feed.path, data);
   return data;
 }
@@ -489,6 +500,7 @@ function makeFeedRow(feed) {
     b.textContent = total;
     badges.appendChild(b);
   }
+  if (feed.amtsblattCount > 0) badges.appendChild(makeBadge("Amtsblatt", "amtsblatt"));
   if (feed.hasRss) badges.appendChild(makeBadge("RSS", "rss"));
   if (feed.hasIcal) badges.appendChild(makeBadge("iCal", "ical"));
 
@@ -587,10 +599,12 @@ async function updateMain() {
   const selectedFeeds = state.feeds.filter(f => state.selected.has(f.path));
   const events = [], news = [];
 
+  const amtsblatt = [];
   await Promise.all(selectedFeeds.map(async (feed) => {
     const data = await loadFeedData(feed);
-    for (const ev of data.events) events.push({ type: "event", feed, item: ev });
-    for (const n of data.news)   news.push({ type: "news",  feed, item: n });
+    for (const ev of data.events)    events.push({ type: "event",      feed, item: ev });
+    for (const n of data.news)       news.push({ type: "news",        feed, item: n });
+    for (const a of data.amtsblatt)  amtsblatt.push({ type: "amtsblatt", feed, item: a });
   }));
 
   if (state.query) return;
@@ -599,18 +613,24 @@ async function updateMain() {
 
   // Left column: past/current items sorted descending (most recent first)
   const pastEvents = events.filter(e => new Date(e.item.startDate).getTime() < now);
-  const recent = [...pastEvents, ...news].sort((a, b) => {
+  const recent = [
+    ...(state.filter.event     ? pastEvents  : []),
+    ...(state.filter.news      ? news        : []),
+    ...(state.filter.amtsblatt ? amtsblatt   : []),
+  ].sort((a, b) => {
     const da = a.type === "event" ? a.item.startDate : (a.item.publishedAt ?? a.item.fetchedAt);
     const db = b.type === "event" ? b.item.startDate : (b.item.publishedAt ?? b.item.fetchedAt);
     return new Date(db) - new Date(da);
   });
 
-  // Right column: upcoming events first (asc), then future-less news (asc by publishedAt)
-  const upcoming = events
-    .filter(e => new Date(e.item.startDate).getTime() >= now)
-    .sort((a, b) => new Date(a.item.startDate) - new Date(b.item.startDate));
-  const upcomingNews = news
-    .sort((a, b) => new Date(a.item.publishedAt ?? a.item.fetchedAt) - new Date(b.item.publishedAt ?? b.item.fetchedAt));
+  // Right column: upcoming events (asc), then news (asc by publishedAt)
+  const upcoming = state.filter.event
+    ? events.filter(e => new Date(e.item.startDate).getTime() >= now)
+        .sort((a, b) => new Date(a.item.startDate) - new Date(b.item.startDate))
+    : [];
+  const upcomingNews = state.filter.news
+    ? [...news].sort((a, b) => new Date(a.item.publishedAt ?? a.item.fetchedAt) - new Date(b.item.publishedAt ?? b.item.fetchedAt))
+    : [];
   const future = [...upcoming, ...upcomingNews];
 
   main.innerHTML = "";
@@ -666,15 +686,14 @@ async function runSearch(query) {
 
   await Promise.all(state.feeds.map(async (feed) => {
     const data = await loadFeedData(feed);
-    for (const ev of data.events) {
-      if (matches(ev.title, ev.description, ev.location, q)) {
-        results.push({ type: "event", feed, item: ev });
-      }
+    if (state.filter.event) for (const ev of data.events) {
+      if (matches(ev.title, ev.description, ev.location, q)) results.push({ type: "event", feed, item: ev });
     }
-    for (const n of data.news) {
-      if (matches(n.title, n.description, null, q)) {
-        results.push({ type: "news", feed, item: n });
-      }
+    if (state.filter.news) for (const n of data.news) {
+      if (matches(n.title, n.description, null, q)) results.push({ type: "news", feed, item: n });
+    }
+    if (state.filter.amtsblatt) for (const a of data.amtsblatt) {
+      if (matches(a.title, null, null, q)) results.push({ type: "amtsblatt", feed, item: a });
     }
   }));
 
@@ -720,11 +739,12 @@ function makeResultCard(type, feed, item, query) {
     ? item.startDate
     : (item.publishedAt ?? item.fetchedAt);
   const dateStr = date ? new Date(date).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }) : "";
+  const typeLabel = type === "event" ? "Veranstaltung" : type === "amtsblatt" ? "Amtsblatt" : "Nachricht";
 
   card.innerHTML = `
     <div class="result-meta">
       <span class="result-source" data-path="${escapeHtml(feed.path)}">${escapeHtml(feed.name)}</span>
-      <span class="result-type">${type === "event" ? "Veranstaltung" : "Nachricht"}</span>
+      <span class="result-type">${typeLabel}</span>
       <span class="result-date">${dateStr}</span>
     </div>
     <div class="result-title"><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener">${highlight(item.title, query)}</a></div>
@@ -887,6 +907,18 @@ document.getElementById("basketClearAll").addEventListener("click", () => {
   updateBasketCount();
   if (!state.query) updateMain();
 });
+
+// ── Filter checkboxes ─────────────────────────────────────────────────────
+function onFilterChange() {
+  state.filter.event     = document.getElementById("filterEvent").checked;
+  state.filter.news      = document.getElementById("filterNews").checked;
+  state.filter.amtsblatt = document.getElementById("filterAmtsblatt").checked;
+  if (state.query) runSearch(state.query);
+  else updateMain();
+}
+document.getElementById("filterEvent").addEventListener("change", onFilterChange);
+document.getElementById("filterNews").addEventListener("change", onFilterChange);
+document.getElementById("filterAmtsblatt").addEventListener("change", onFilterChange);
 
 // ── Boot ───────────────────────────────────────────────────────────────────
 init();
