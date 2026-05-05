@@ -597,8 +597,9 @@ async function updateMain() {
 
   const now = Date.now();
 
-  // Left column: all items sorted descending (most recent first)
-  const recent = [...events, ...news].sort((a, b) => {
+  // Left column: past/current items sorted descending (most recent first)
+  const pastEvents = events.filter(e => new Date(e.item.startDate).getTime() < now);
+  const recent = [...pastEvents, ...news].sort((a, b) => {
     const da = a.type === "event" ? a.item.startDate : (a.item.publishedAt ?? a.item.fetchedAt);
     const db = b.type === "event" ? b.item.startDate : (b.item.publishedAt ?? b.item.fetchedAt);
     return new Date(db) - new Date(da);
@@ -630,7 +631,7 @@ async function updateMain() {
   rightHeader.className = "col-header";
   rightHeader.textContent = upcoming.length
     ? `Nächste Veranstaltungen (${upcoming.length})`
-    : `Älteste Einträge (${future.length})`;
+    : `Demnächst (${future.length})`;
   right.appendChild(rightHeader);
   for (const { type, feed, item } of future) right.appendChild(makeResultCard(type, feed, item, ""));
 
