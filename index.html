@@ -282,14 +282,29 @@
       .feed-cols { grid-template-columns: 1fr; }
       .feed-col + .feed-col { border-left: none; border-top: 1px solid var(--border); padding-left: 0; padding-top: 16px; }
     }
+    .mobile-toggle {
+      display: none; background: none; border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 6px 10px; cursor: pointer; font-size: 16px;
+      line-height: 1; color: var(--text);
+    }
+    .mobile-toggle:hover { background: var(--bg); }
     @media (max-width: 700px) {
-      .browser { display: none; }
-      .basket-panel { width: 100%; border-left: none; border-top: 1px solid var(--border); }
+      .mobile-toggle { display: inline-flex; }
+      .browser {
+        display: none; position: fixed; top: 57px; left: 0; right: 0; bottom: 0;
+        width: 100%; z-index: 90; border-right: none;
+      }
+      .browser.mobile-open { display: block; }
+      .basket-panel {
+        position: fixed; top: 57px; left: 0; right: 0; bottom: 0;
+        width: 100%; z-index: 90; border-left: none; border-top: 1px solid var(--border);
+      }
     }
   </style>
 </head>
 <body>
 <header>
+  <button class="mobile-toggle" id="mobileToggle" title="Feeds durchsuchen">☰</button>
   <a class="logo" href="#">amts<span>feed</span></a>
   <div class="search-wrap">
     <input class="search-input" id="search" type="search" placeholder="Volltext suchen…" autocomplete="off" spellcheck="false">
@@ -528,6 +543,7 @@ function toggleSelected(feed) {
   updateTreeSelection();
   renderBasket();
   updateBasketCount();
+  document.getElementById("browser").classList.remove("mobile-open");
   if (!state.query) updateMain();
 }
 
@@ -855,6 +871,11 @@ document.getElementById("basketShare").addEventListener("click", async () => {
       prompt("Link:", url);
     }
   }
+});
+
+document.getElementById("mobileToggle").addEventListener("click", () => {
+  const browser = document.getElementById("browser");
+  browser.classList.toggle("mobile-open");
 });
 
 document.getElementById("basketClearAll").addEventListener("click", () => {
