@@ -474,32 +474,57 @@ async function updateMain() {
   main.innerHTML = `<div class="state-msg"><div class="spinner"></div>&ensp;Lade Einträge…</div>`;
 
   const selectedFeeds = state.feeds.filter(f => state.selected.has(f.path));
-  const allItems = [];
+  const events = [], news = [];
 
   await Promise.all(selectedFeeds.map(async (feed) => {
     const data = await loadFeedData(feed);
-    for (const ev of data.events) allItems.push({ type: "event", feed, item: ev });
-    for (const n of data.news)   allItems.push({ type: "news",  feed, item: n });
+    for (const ev of data.events) events.push({ type: "event", feed, item: ev });
+    for (const n of data.news)   news.push({ type: "news",  feed, item: n });
   }));
 
-  if (state.query) return; // search started while loading
+  if (state.query) return;
 
-  allItems.sort((a, b) => {
-    const da = a.type === "event" ? a.item.startDate : (a.item.publishedAt ?? a.item.fetchedAt);
-    const db = b.type === "event" ? b.item.startDate : (b.item.publishedAt ?? b.item.fetchedAt);
-    return new Date(db) - new Date(da);
-  });
+  const now = Date.now();
+  const upcoming = events
+    .filter(e => new Date(e.item.startDate).getTime() >= now)
+    .sort((a, b) => new Date(a.item.startDate) - new Date(b.item.startDate));
+  const past = events
+    .filter(e => new Date(e.item.startDate).getTime() < now)
+    .sort((a, b) => new Date(b.item.startDate) - new Date(a.item.startDate));
+  const sortedNews = news
+    .sort((a, b) => new Date(b.item.publishedAt ?? b.item.fetchedAt) - new Date(a.item.publishedAt ?? a.item.fetchedAt));
 
   main.innerHTML = "";
-  const header = document.createElement("div");
-  header.className = "results-header";
-  const names = selectedFeeds.map(f => f.name).join(", ");
-  header.textContent = `${allItems.length} Einträge — ${names}`;
-  main.appendChild(header);
 
-  for (const { type, feed, item } of allItems) {
-    main.appendChild(makeResultCard(type, feed, item, ""));
+  if (upcoming.length) {
+    main.appendChild(makeSectionHeader(`Kommende Veranstaltungen (${upcoming.length})`));
+    for (const e of upcoming) main.appendChild(makeResultCard(e.type, e.feed, e.item, ""));
   }
+
+  if (sortedNews.length) {
+    main.appendChild(makeSectionHeader(`Aktuelle Nachrichten (${sortedNews.length})`));
+    for (const n of sortedNews) main.appendChild(makeResultCard(n.type, n.feed, n.item, ""));
+  }
+
+  if (past.length) {
+    const details = document.createElement("details");
+    details.style.marginTop = "8px";
+    const summary = document.createElement("summary");
+    summary.className = "results-header";
+    summary.style.cssText = "cursor:pointer;padding:6px 0;user-select:none;";
+    summary.textContent = `Vergangene Veranstaltungen (${past.length})`;
+    details.appendChild(summary);
+    for (const e of past) details.appendChild(makeResultCard(e.type, e.feed, e.item, ""));
+    main.appendChild(details);
+  }
+}
+
+function makeSectionHeader(text) {
+  const h = document.createElement("div");
+  h.className = "results-header";
+  h.style.cssText = "margin-top:16px;margin-bottom:8px;font-weight:600;color:var(--text);font-size:13px;border-bottom:1px solid var(--border);padding-bottom:6px;";
+  h.textContent = text;
+  return h;
 }
 
 // ── Search ─────────────────────────────────────────────────────────────────
