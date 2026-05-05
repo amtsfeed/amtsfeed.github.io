@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>amtsfeed — Kommunale Feeds entdecken</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f8f9fa;
+      --surface: #ffffff;
+      --border: #dee2e6;
+      --text: #212529;
+      --muted: #6c757d;
+      --primary: #0d6efd;
+      --primary-hover: #0b5ed7;
+      --primary-light: #e7f1ff;
+      --success: #198754;
+      --badge-bg: #e9ecef;
+      --badge-text: #495057;
+      --shadow: 0 1px 3px rgba(0,0,0,.08);
+      --radius: 6px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    /* Header */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .logo { font-weight: 700; font-size: 18px; color: var(--primary); white-space: nowrap; text-decoration: none; }
+    .logo span { color: var(--text); font-weight: 400; }
+    .search-wrap { flex: 1; max-width: 480px; position: relative; }
+    .search-input {
+      width: 100%;
+      padding: 8px 36px 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 14px;
+      outline: none;
+      transition: border-color .15s;
+    }
+    .search-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(13,110,253,.1); }
+    .search-clear {
+      position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+      background: none; border: none; cursor: pointer; color: var(--muted); font-size: 16px; display: none;
+    }
+    .basket-btn {
+      display: flex; align-items: center; gap: 6px;
+      padding: 7px 14px; border: 1px solid var(--border); border-radius: var(--radius);
+      background: var(--surface); cursor: pointer; font-size: 13px; white-space: nowrap;
+      transition: background .15s;
+    }
+    .basket-btn:hover { background: var(--bg); }
+    .basket-count {
+      background: var(--primary); color: #fff; border-radius: 12px;
+      padding: 1px 7px; font-size: 11px; font-weight: 700; display: none;
+    }
+
+    /* Layout */
+    .layout { display: flex; height: calc(100vh - 57px); }
+
+    /* Sidebar/browser */
+    .browser {
+      width: 320px; min-width: 240px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      flex-shrink: 0;
+    }
+    .browser-header {
+      padding: 14px 16px 10px;
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .06em; color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* Accordion */
+    .acc-item {}
+    .acc-toggle {
+      display: flex; align-items: center; gap: 6px;
+      padding: 9px 16px; cursor: pointer; width: 100%;
+      background: none; border: none; text-align: left; font-size: 13px;
+      font-weight: 600; color: var(--text);
+      border-bottom: 1px solid var(--border);
+    }
+    .acc-toggle:hover { background: var(--bg); }
+    .acc-arrow { font-size: 10px; color: var(--muted); transition: transform .15s; }
+    .acc-toggle.open .acc-arrow { transform: rotate(90deg); }
+    .acc-body { display: none; }
+    .acc-body.open { display: block; }
+
+    .sub-acc-toggle {
+      display: flex; align-items: center; gap: 6px;
+      padding: 7px 16px 7px 28px; cursor: pointer; width: 100%;
+      background: none; border: none; text-align: left; font-size: 12px;
+      font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--border);
+    }
+    .sub-acc-toggle:hover { background: var(--bg); }
+    .sub-acc-toggle.open .acc-arrow { transform: rotate(90deg); }
+    .sub-acc-body { display: none; }
+    .sub-acc-body.open { display: block; }
+
+    /* Feed items in browser */
+    .feed-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 16px 7px 40px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+    }
+    .feed-item:hover { background: var(--primary-light); }
+    .feed-item.selected { background: var(--primary-light); }
+    .feed-checkbox {
+      width: 15px; height: 15px; flex-shrink: 0; cursor: pointer;
+      accent-color: var(--primary);
+    }
+    .feed-name { flex: 1; font-size: 13px; }
+    .feed-badges { display: flex; gap: 3px; flex-shrink: 0; }
+    .badge {
+      font-size: 10px; padding: 1px 5px; border-radius: 3px;
+      background: var(--badge-bg); color: var(--badge-text); white-space: nowrap;
+    }
+    .badge.rss { background: #fff3cd; color: #856404; }
+    .badge.ical { background: #d1e7dd; color: #0a3622; }
+
+    /* Main content */
+    .main {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+    }
+
+    /* Empty/loading state */
+    .state-msg {
+      text-align: center; color: var(--muted);
+      margin-top: 60px; font-size: 15px;
+    }
+
+    /* Search results */
+    .results-header {
+      font-size: 12px; color: var(--muted); margin-bottom: 12px;
+    }
+    .result-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 12px 14px; margin-bottom: 10px;
+      box-shadow: var(--shadow);
+    }
+    .result-meta {
+      display: flex; align-items: center; gap: 6px; margin-bottom: 4px;
+    }
+    .result-source {
+      font-size: 11px; padding: 2px 6px; border-radius: 3px;
+      background: var(--primary-light); color: var(--primary);
+      font-weight: 600; cursor: pointer;
+    }
+    .result-source:hover { background: var(--primary); color: #fff; }
+    .result-type {
+      font-size: 11px; color: var(--muted);
+    }
+    .result-date {
+      font-size: 11px; color: var(--muted); margin-left: auto;
+    }
+    .result-title {
+      font-size: 14px; font-weight: 600; margin-bottom: 3px;
+    }
+    .result-title a { color: var(--text); text-decoration: none; }
+    .result-title a:hover { color: var(--primary); }
+    .result-desc {
+      font-size: 12px; color: var(--muted); line-height: 1.4;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .result-location {
+      font-size: 11px; color: var(--muted); margin-top: 3px;
+    }
+    mark { background: #fff3cd; border-radius: 2px; padding: 0 1px; }
+
+    /* Basket panel */
+    .basket-panel {
+      width: 320px; min-width: 280px;
+      background: var(--surface); border-left: 1px solid var(--border);
+      overflow-y: auto; flex-shrink: 0; display: none;
+    }
+    .basket-panel.open { display: flex; flex-direction: column; }
+    .basket-head {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .basket-title { font-size: 14px; font-weight: 700; }
+    .basket-clear { font-size: 12px; color: var(--muted); cursor: pointer; background: none; border: none; }
+    .basket-clear:hover { color: #dc3545; }
+    .basket-empty { padding: 20px 16px; color: var(--muted); font-size: 13px; }
+    .basket-entry {
+      border-bottom: 1px solid var(--border); padding: 12px 16px;
+    }
+    .basket-entry-head {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;
+    }
+    .basket-entry-name { font-size: 13px; font-weight: 600; }
+    .basket-remove { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 16px; line-height: 1; }
+    .basket-remove:hover { color: #dc3545; }
+    .basket-entry-path { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+    .basket-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .copy-btn {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 4px 10px; border-radius: 4px; font-size: 12px;
+      border: 1px solid var(--border); background: var(--bg);
+      cursor: pointer; transition: all .15s;
+    }
+    .copy-btn:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .copy-btn.copied { background: var(--success); color: #fff; border-color: var(--success); }
+
+    /* Loading indicator */
+    .spinner {
+      display: inline-block; width: 14px; height: 14px;
+      border: 2px solid var(--border); border-top-color: var(--primary);
+      border-radius: 50%; animation: spin .6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Responsive */
+    @media (max-width: 700px) {
+      .browser { display: none; }
+      .basket-panel { width: 100%; border-left: none; border-top: 1px solid var(--border); }
+    }
+  </style>
+</head>
+<body>
+<header>
+  <a class="logo" href="#">amts<span>feed</span></a>
+  <div class="search-wrap">
+    <input class="search-input" id="search" type="search" placeholder="Volltext suchen…" autocomplete="off" spellcheck="false">
+    <button class="search-clear" id="searchClear" title="Suche leeren">×</button>
+  </div>
+  <button class="basket-btn" id="basketBtn">
+    <span>Mein Feed</span>
+    <span class="basket-count" id="basketCount">0</span>
+  </button>
+</header>
+
+<div class="layout">
+  <nav class="browser" id="browser">
+    <div class="browser-header">Feeds durchsuchen</div>
+    <div id="tree"></div>
+  </nav>
+
+  <main class="main" id="main">
+    <div class="state-msg" id="stateMsg">Lädt…</div>
+    <div id="results" hidden></div>
+  </main>
+
+  <aside class="basket-panel" id="basketPanel">
+    <div class="basket-head">
+      <span class="basket-title">Mein Feed</span>
+      <button class="basket-clear" id="basketClearAll">Alle entfernen</button>
+    </div>
+    <div id="basketContent"></div>
+  </aside>
+</div>
+
+<script type="module">
+const METADATA_URL = "https://raw.githubusercontent.com/amtsfeed/amtsfeed/main/wiki/metadata.json";
+
+// ── State ──────────────────────────────────────────────────────────────────
+const state = {
+  feeds: [],
+  selected: new Set(),
+  query: "",
+  searchData: new Map(),   // path → { events, news }
+  searchLoading: false,
+  basketOpen: false,
+};
+
+// ── Fetch helpers ──────────────────────────────────────────────────────────
+async function fetchJson(url) {
+  const r = await fetch(url);
+  if (!r.ok) return null;
+  return r.json();
+}
+
+async function loadFeedData(feed) {
+  if (state.searchData.has(feed.path)) return state.searchData.get(feed.path);
+  const [events, news] = await Promise.all([
+    feed.eventsUrl ? fetchJson(feed.eventsUrl) : null,
+    feed.newsUrl   ? fetchJson(feed.newsUrl)   : null,
+  ]);
+  const data = { events: events?.items ?? [], news: news?.items ?? [] };
+  state.searchData.set(feed.path, data);
+  return data;
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+async function init() {
+  const metadata = await fetchJson(METADATA_URL);
+  if (!metadata) {
+    document.getElementById("stateMsg").textContent = "Fehler beim Laden der Feed-Daten.";
+    return;
+  }
+  state.feeds = metadata.feeds;
+  renderTree();
+  document.getElementById("stateMsg").textContent = "";
+  document.getElementById("stateMsg").style.display = "none";
+  showWelcome();
+}
+
+// ── Tree ───────────────────────────────────────────────────────────────────
+function buildHierarchy(feeds) {
+  const tree = {};
+  for (const feed of feeds) {
+    const [bundesland, landkreis, ...rest] = feed.breadcrumb;
+    if (!tree[bundesland]) tree[bundesland] = {};
+    const lk = landkreis ?? "(kein Landkreis)";
+    if (!tree[bundesland][lk]) tree[bundesland][lk] = [];
+    tree[bundesland][lk].push(feed);
+  }
+  return tree;
+}
+
+function renderTree() {
+  const tree = buildHierarchy(state.feeds);
+  const container = document.getElementById("tree");
+  container.innerHTML = "";
+
+  for (const [bundesland, landkreise] of Object.entries(tree)) {
+    const item = document.createElement("div");
+    item.className = "acc-item";
+
+    const toggle = document.createElement("button");
+    toggle.className = "acc-toggle open";
+    toggle.innerHTML = `<span class="acc-arrow">▶</span> ${bundesland}`;
+    item.appendChild(toggle);
+
+    const body = document.createElement("div");
+    body.className = "acc-body open";
+
+    for (const [landkreis, feeds] of Object.entries(landkreise)) {
+      const subItem = document.createElement("div");
+
+      const subToggle = document.createElement("button");
+      subToggle.className = "sub-acc-toggle open";
+      subToggle.innerHTML = `<span class="acc-arrow">▶</span> ${landkreis}`;
+      subItem.appendChild(subToggle);
+
+      const subBody = document.createElement("div");
+      subBody.className = "sub-acc-body open";
+
+      for (const feed of feeds) {
+        subBody.appendChild(makeFeedRow(feed));
+      }
+
+      subToggle.addEventListener("click", () => {
+        subToggle.classList.toggle("open");
+        subBody.classList.toggle("open");
+      });
+      subItem.appendChild(subBody);
+      body.appendChild(subItem);
+    }
+
+    toggle.addEventListener("click", () => {
+      toggle.classList.toggle("open");
+      body.classList.toggle("open");
+    });
+
+    item.appendChild(body);
+    container.appendChild(item);
+  }
+}
+
+function makeFeedRow(feed) {
+  const row = document.createElement("div");
+  row.className = "feed-item" + (state.selected.has(feed.path) ? " selected" : "");
+  row.dataset.path = feed.path;
+
+  const cb = document.createElement("input");
+  cb.type = "checkbox";
+  cb.className = "feed-checkbox";
+  cb.checked = state.selected.has(feed.path);
+  cb.addEventListener("change", (e) => {
+    e.stopPropagation();
+    toggleSelected(feed);
+  });
+
+  const name = document.createElement("span");
+  name.className = "feed-name";
+  name.textContent = feed.name;
+
+  const badges = document.createElement("span");
+  badges.className = "feed-badges";
+  const total = feed.eventCount + feed.newsCount;
+  if (total > 0) {
+    const b = document.createElement("span");
+    b.className = "badge";
+    b.textContent = total;
+    badges.appendChild(b);
+  }
+  if (feed.hasRss) badges.appendChild(makeBadge("RSS", "rss"));
+  if (feed.hasIcal) badges.appendChild(makeBadge("iCal", "ical"));
+
+  row.appendChild(cb);
+  row.appendChild(name);
+  row.appendChild(badges);
+
+  row.addEventListener("click", (e) => {
+    if (e.target === cb) return;
+    toggleSelected(feed);
+  });
+
+  return row;
+}
+
+function makeBadge(text, cls) {
+  const b = document.createElement("span");
+  b.className = `badge ${cls}`;
+  b.textContent = text;
+  return b;
+}
+
+// ── Selection ──────────────────────────────────────────────────────────────
+function toggleSelected(feed) {
+  if (state.selected.has(feed.path)) {
+    state.selected.delete(feed.path);
+  } else {
+    state.selected.add(feed.path);
+  }
+  updateTreeSelection();
+  renderBasket();
+  updateBasketCount();
+}
+
+function updateTreeSelection() {
+  document.querySelectorAll(".feed-item").forEach(row => {
+    const selected = state.selected.has(row.dataset.path);
+    row.classList.toggle("selected", selected);
+    const cb = row.querySelector("input[type=checkbox]");
+    if (cb) cb.checked = selected;
+  });
+}
+
+// ── Welcome ────────────────────────────────────────────────────────────────
+function showWelcome() {
+  const main = document.getElementById("main");
+  const total = state.feeds.reduce((s, f) => s + f.eventCount + f.newsCount, 0);
+  main.innerHTML = `
+    <div style="max-width:560px;margin:40px auto 0;text-align:center;color:var(--muted)">
+      <div style="font-size:32px;margin-bottom:12px">📡</div>
+      <h2 style="color:var(--text);font-size:18px;margin-bottom:8px">Kommunale Feeds entdecken</h2>
+      <p style="margin-bottom:6px">${state.feeds.length} Gemeinden und Ämter — ${total.toLocaleString("de")} Einträge insgesamt</p>
+      <p>Links im Feed-Browser auswählen, um Feeds zu abonnieren.<br>Oder oben nach Themen und Orten suchen.</p>
+    </div>`;
+}
+
+// ── Search ─────────────────────────────────────────────────────────────────
+let searchTimer = null;
+
+function onSearch(query) {
+  state.query = query.trim();
+  document.getElementById("searchClear").style.display = state.query ? "block" : "none";
+  clearTimeout(searchTimer);
+  if (!state.query) {
+    showWelcome();
+    return;
+  }
+  searchTimer = setTimeout(() => runSearch(state.query), 300);
+}
+
+async function runSearch(query) {
+  const main = document.getElementById("main");
+  main.innerHTML = `<div class="state-msg"><div class="spinner"></div>&ensp;Durchsuche…</div>`;
+
+  const results = [];
+  const q = query.toLowerCase();
+
+  await Promise.all(state.feeds.map(async (feed) => {
+    const data = await loadFeedData(feed);
+    for (const ev of data.events) {
+      if (matches(ev.title, ev.description, ev.location, q)) {
+        results.push({ type: "event", feed, item: ev });
+      }
+    }
+    for (const n of data.news) {
+      if (matches(n.title, n.description, null, q)) {
+        results.push({ type: "news", feed, item: n });
+      }
+    }
+  }));
+
+  if (state.query !== query) return; // stale
+
+  results.sort((a, b) => {
+    const da = a.type === "event" ? a.item.startDate : (a.item.publishedAt ?? a.item.fetchedAt);
+    const db = b.type === "event" ? b.item.startDate : (b.item.publishedAt ?? b.item.fetchedAt);
+    return new Date(db) - new Date(da);
+  });
+
+  renderResults(results, query);
+}
+
+function matches(...args) {
+  const q = args.pop();
+  return args.some(s => s?.toLowerCase().includes(q));
+}
+
+function renderResults(results, query) {
+  const main = document.getElementById("main");
+  if (!results.length) {
+    main.innerHTML = `<div class="state-msg">Keine Ergebnisse für „${escapeHtml(query)}".</div>`;
+    return;
+  }
+
+  const header = document.createElement("div");
+  header.className = "results-header";
+  header.textContent = `${results.length} Ergebnisse für „${query}"`;
+  main.innerHTML = "";
+  main.appendChild(header);
+
+  for (const { type, feed, item } of results) {
+    main.appendChild(makeResultCard(type, feed, item, query));
+  }
+}
+
+function makeResultCard(type, feed, item, query) {
+  const card = document.createElement("div");
+  card.className = "result-card";
+
+  const date = type === "event"
+    ? item.startDate
+    : (item.publishedAt ?? item.fetchedAt);
+  const dateStr = date ? new Date(date).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }) : "";
+
+  card.innerHTML = `
+    <div class="result-meta">
+      <span class="result-source" data-path="${escapeHtml(feed.path)}">${escapeHtml(feed.name)}</span>
+      <span class="result-type">${type === "event" ? "Veranstaltung" : "Nachricht"}</span>
+      <span class="result-date">${dateStr}</span>
+    </div>
+    <div class="result-title"><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener">${highlight(item.title, query)}</a></div>
+    ${item.description ? `<div class="result-desc">${highlight(item.description, query)}</div>` : ""}
+    ${type === "event" && item.location ? `<div class="result-location">📍 ${escapeHtml(item.location)}</div>` : ""}
+  `;
+
+  card.querySelector(".result-source").addEventListener("click", () => {
+    const f = state.feeds.find(x => x.path === feed.path);
+    if (f) {
+      if (!state.selected.has(f.path)) {
+        toggleSelected(f);
+        if (!state.basketOpen) openBasket();
+      }
+    }
+  });
+
+  return card;
+}
+
+function highlight(text, query) {
+  if (!text || !query) return escapeHtml(text ?? "");
+  const escaped = escapeHtml(text);
+  const re = new RegExp(`(${escapeRe(query)})`, "gi");
+  return escaped.replace(re, "<mark>$1</mark>");
+}
+
+function escapeHtml(s) {
+  return (s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+function escapeRe(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// ── Basket ─────────────────────────────────────────────────────────────────
+function openBasket() {
+  state.basketOpen = true;
+  document.getElementById("basketPanel").classList.add("open");
+  renderBasket();
+}
+
+function closeBasket() {
+  state.basketOpen = false;
+  document.getElementById("basketPanel").classList.remove("open");
+}
+
+function renderBasket() {
+  const content = document.getElementById("basketContent");
+  if (!state.selected.size) {
+    content.innerHTML = `<div class="basket-empty">Noch keine Feeds ausgewählt.<br>Klicke im Browser links auf eine Gemeinde.</div>`;
+    return;
+  }
+
+  content.innerHTML = "";
+  for (const path of state.selected) {
+    const feed = state.feeds.find(f => f.path === path);
+    if (!feed) continue;
+    const crumb = feed.breadcrumb.slice(0, -1).join(" › ");
+
+    const entry = document.createElement("div");
+    entry.className = "basket-entry";
+    entry.innerHTML = `
+      <div class="basket-entry-head">
+        <span class="basket-entry-name">${escapeHtml(feed.name)}</span>
+        <button class="basket-remove" data-path="${escapeHtml(path)}" title="Entfernen">×</button>
+      </div>
+      ${crumb ? `<div class="basket-entry-path">${escapeHtml(crumb)}</div>` : ""}
+      <div class="basket-actions">
+        ${feed.rssUrl ? `<button class="copy-btn" data-url="${escapeHtml(feed.rssUrl)}" data-label="RSS">📋 RSS kopieren</button>` : ""}
+        ${feed.icalUrl ? `<button class="copy-btn" data-url="${escapeHtml(feed.icalUrl)}" data-label="iCal">📋 iCal kopieren</button>` : ""}
+      </div>`;
+
+    entry.querySelector(".basket-remove").addEventListener("click", () => {
+      const f = state.feeds.find(x => x.path === path);
+      if (f) toggleSelected(f);
+    });
+
+    entry.querySelectorAll(".copy-btn").forEach(btn => {
+      btn.addEventListener("click", () => copyUrl(btn, btn.dataset.url, btn.dataset.label));
+    });
+
+    content.appendChild(entry);
+  }
+}
+
+async function copyUrl(btn, url, label) {
+  try {
+    await navigator.clipboard.writeText(url);
+    btn.textContent = `✓ ${label} kopiert`;
+    btn.classList.add("copied");
+    setTimeout(() => {
+      btn.textContent = `📋 ${label} kopieren`;
+      btn.classList.remove("copied");
+    }, 2000);
+  } catch {
+    prompt(`${label}-URL:`, url);
+  }
+}
+
+function updateBasketCount() {
+  const count = document.getElementById("basketCount");
+  const n = state.selected.size;
+  count.textContent = n;
+  count.style.display = n ? "inline" : "none";
+}
+
+// ── Events ─────────────────────────────────────────────────────────────────
+document.getElementById("search").addEventListener("input", e => onSearch(e.target.value));
+document.getElementById("searchClear").addEventListener("click", () => {
+  document.getElementById("search").value = "";
+  onSearch("");
+});
+
+document.getElementById("basketBtn").addEventListener("click", () => {
+  if (state.basketOpen) closeBasket(); else openBasket();
+});
+
+document.getElementById("basketClearAll").addEventListener("click", () => {
+  state.selected.clear();
+  updateTreeSelection();
+  renderBasket();
+  updateBasketCount();
+});
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
