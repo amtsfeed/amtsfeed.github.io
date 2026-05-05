@@ -230,6 +230,11 @@
     .basket-remove:hover { color: #dc3545; }
     .basket-entry-path { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
     .basket-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .basket-section-label {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .05em; color: var(--muted); margin: 8px 0 4px;
+    }
+    .basket-actions + .basket-section-label { margin-top: 10px; }
     .copy-btn {
       display: inline-flex; align-items: center; gap: 4px;
       padding: 4px 10px; border-radius: 4px; font-size: 12px;
@@ -238,6 +243,8 @@
     }
     .copy-btn:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
     .copy-btn.copied { background: var(--success); color: #fff; border-color: var(--success); }
+    .copy-btn--official { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
+    .copy-btn--official:hover { background: var(--primary); color: #fff; }
 
     /* Loading indicator */
     .spinner {
@@ -761,6 +768,20 @@ function renderBasket() {
     if (!feed) continue;
     const crumb = feed.breadcrumb.slice(0, -1).join(" › ");
 
+    const sources = feed.sources ?? [];
+    const officialRss  = sources.find(s => s.type === "rss");
+    const officialIcal = sources.find(s => s.type === "ical");
+
+    const officialButtons = sources.map(s => {
+      const label = s.title ?? (s.type === "rss" ? "RSS" : "iCal");
+      return `<button class="copy-btn copy-btn--official" data-url="${escapeHtml(s.url)}" data-label="${escapeHtml(label)}">📋 ${escapeHtml(label)}</button>`;
+    }).join("");
+
+    const generatedButtons = [
+      !officialRss  && feed.rssUrl  ? `<button class="copy-btn copy-btn--generated" data-url="${escapeHtml(feed.rssUrl)}"  data-label="RSS (amtsfeed)">📋 RSS</button>` : "",
+      !officialIcal && feed.icalUrl ? `<button class="copy-btn copy-btn--generated" data-url="${escapeHtml(feed.icalUrl)}" data-label="iCal (amtsfeed)">📋 iCal</button>` : "",
+    ].join("");
+
     const entry = document.createElement("div");
     entry.className = "basket-entry";
     entry.innerHTML = `
@@ -769,10 +790,9 @@ function renderBasket() {
         <button class="basket-remove" data-path="${escapeHtml(path)}" title="Entfernen">×</button>
       </div>
       ${crumb ? `<div class="basket-entry-path">${escapeHtml(crumb)}</div>` : ""}
-      <div class="basket-actions">
-        ${feed.rssUrl ? `<button class="copy-btn" data-url="${escapeHtml(feed.rssUrl)}" data-label="RSS">📋 RSS kopieren</button>` : ""}
-        ${feed.icalUrl ? `<button class="copy-btn" data-url="${escapeHtml(feed.icalUrl)}" data-label="iCal">📋 iCal kopieren</button>` : ""}
-      </div>`;
+      ${officialButtons ? `<div class="basket-section-label">Offizielle Quelle</div><div class="basket-actions">${officialButtons}</div>` : ""}
+      ${generatedButtons ? `<div class="basket-section-label">amtsfeed</div><div class="basket-actions">${generatedButtons}</div>` : ""}
+      ${!officialButtons && !generatedButtons ? `<div class="basket-empty" style="padding:4px 0;font-size:12px;">Kein abonnierbarer Feed verfügbar.</div>` : ""}`;
 
     entry.querySelector(".basket-remove").addEventListener("click", () => {
       const f = state.feeds.find(x => x.path === path);
