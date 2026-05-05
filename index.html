@@ -440,6 +440,7 @@ function toggleSelected(feed) {
   updateTreeSelection();
   renderBasket();
   updateBasketCount();
+  if (!state.query) updateMain();
 }
 
 function updateTreeSelection() {
@@ -464,6 +465,43 @@ function showWelcome() {
     </div>`;
 }
 
+// ── Main area (selected feeds, no query) ───────────────────────────────────
+async function updateMain() {
+  if (state.query) return;
+  if (!state.selected.size) { showWelcome(); return; }
+
+  const main = document.getElementById("main");
+  main.innerHTML = `<div class="state-msg"><div class="spinner"></div>&ensp;Lade Einträge…</div>`;
+
+  const selectedFeeds = state.feeds.filter(f => state.selected.has(f.path));
+  const allItems = [];
+
+  await Promise.all(selectedFeeds.map(async (feed) => {
+    const data = await loadFeedData(feed);
+    for (const ev of data.events) allItems.push({ type: "event", feed, item: ev });
+    for (const n of data.news)   allItems.push({ type: "news",  feed, item: n });
+  }));
+
+  if (state.query) return; // search started while loading
+
+  allItems.sort((a, b) => {
+    const da = a.type === "event" ? a.item.startDate : (a.item.publishedAt ?? a.item.fetchedAt);
+    const db = b.type === "event" ? b.item.startDate : (b.item.publishedAt ?? b.item.fetchedAt);
+    return new Date(db) - new Date(da);
+  });
+
+  main.innerHTML = "";
+  const header = document.createElement("div");
+  header.className = "results-header";
+  const names = selectedFeeds.map(f => f.name).join(", ");
+  header.textContent = `${allItems.length} Einträge — ${names}`;
+  main.appendChild(header);
+
+  for (const { type, feed, item } of allItems) {
+    main.appendChild(makeResultCard(type, feed, item, ""));
+  }
+}
+
 // ── Search ─────────────────────────────────────────────────────────────────
 let searchTimer = null;
 
@@ -472,7 +510,7 @@ function onSearch(query) {
   document.getElementById("searchClear").style.display = state.query ? "block" : "none";
   clearTimeout(searchTimer);
   if (!state.query) {
-    showWelcome();
+    updateMain();
     return;
   }
   searchTimer = setTimeout(() => runSearch(state.query), 300);
@@ -669,6 +707,7 @@ document.getElementById("basketClearAll").addEventListener("click", () => {
   updateTreeSelection();
   renderBasket();
   updateBasketCount();
+  if (!state.query) updateMain();
 });
 
 // ── Boot ───────────────────────────────────────────────────────────────────
