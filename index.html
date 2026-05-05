@@ -316,7 +316,10 @@
   <aside class="basket-panel" id="basketPanel">
     <div class="basket-head">
       <span class="basket-title">Mein Feed</span>
-      <button class="basket-clear" id="basketClearAll">Alle entfernen</button>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button class="basket-clear" id="basketShare" title="Aktuelle Auswahl teilen" style="color:var(--primary)">Teilen</button>
+        <button class="basket-clear" id="basketClearAll">Alle entfernen</button>
+      </div>
     </div>
     <div id="basketContent"></div>
   </aside>
@@ -362,9 +365,16 @@ async function init() {
   }
   state.feeds = metadata.feeds;
   renderTree();
+  loadFromHash();
   document.getElementById("stateMsg").textContent = "";
   document.getElementById("stateMsg").style.display = "none";
-  showWelcome();
+  if (state.selected.size) {
+    updateTreeSelection();
+    updateBasketCount();
+    updateMain();
+  } else {
+    showWelcome();
+  }
 }
 
 // ── Tree ───────────────────────────────────────────────────────────────────
@@ -479,6 +489,27 @@ function makeBadge(text, cls) {
   return b;
 }
 
+// ── Hash / deep-link ──────────────────────────────────────────────────────
+function updateHash() {
+  if (!state.selected.size) {
+    history.replaceState(null, "", location.pathname + location.search);
+    return;
+  }
+  const hash = [...state.selected].map(p => encodeURIComponent(p)).join("|");
+  history.replaceState(null, "", "#" + hash);
+}
+
+function loadFromHash() {
+  const raw = location.hash.slice(1);
+  if (!raw) return;
+  for (const part of raw.split("|")) {
+    try {
+      const path = decodeURIComponent(part);
+      if (state.feeds.some(f => f.path === path)) state.selected.add(path);
+    } catch {}
+  }
+}
+
 // ── Selection ──────────────────────────────────────────────────────────────
 function toggleSelected(feed) {
   if (state.selected.has(feed.path)) {
@@ -486,6 +517,7 @@ function toggleSelected(feed) {
   } else {
     state.selected.add(feed.path);
   }
+  updateHash();
   updateTreeSelection();
   renderBasket();
   updateBasketCount();
@@ -787,8 +819,27 @@ document.getElementById("basketBtn").addEventListener("click", () => {
   if (state.basketOpen) closeBasket(); else openBasket();
 });
 
+document.getElementById("basketShare").addEventListener("click", async () => {
+  const url = location.href;
+  const names = [...state.selected].map(p => state.feeds.find(f => f.path === p)?.name).filter(Boolean).join(", ");
+  const shareData = { title: `amtsfeed — ${names}`, url };
+  const btn = document.getElementById("basketShare");
+  if (navigator.share) {
+    try { await navigator.share(shareData); } catch {}
+  } else {
+    try {
+      await navigator.clipboard.writeText(url);
+      btn.textContent = "✓ Link kopiert";
+      setTimeout(() => { btn.textContent = "Teilen"; }, 2000);
+    } catch {
+      prompt("Link:", url);
+    }
+  }
+});
+
 document.getElementById("basketClearAll").addEventListener("click", () => {
   state.selected.clear();
+  updateHash();
   updateTreeSelection();
   renderBasket();
   updateBasketCount();
