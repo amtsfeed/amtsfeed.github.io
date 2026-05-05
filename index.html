@@ -233,7 +233,34 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* Two-column feed view */
+    .feed-cols {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      height: 100%;
+    }
+    .feed-col {
+      overflow-y: auto;
+      padding: 16px 16px 16px 0;
+    }
+    .feed-col + .feed-col {
+      padding-left: 16px;
+      border-left: 1px solid var(--border);
+    }
+    .col-header {
+      font-size: 12px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .05em; color: var(--muted);
+      margin-bottom: 12px; padding-bottom: 6px;
+      border-bottom: 2px solid var(--border);
+      position: sticky; top: 0; background: var(--bg); z-index: 1;
+    }
+
     /* Responsive */
+    @media (max-width: 900px) {
+      .feed-cols { grid-template-columns: 1fr; }
+      .feed-col + .feed-col { border-left: none; border-top: 1px solid var(--border); padding-left: 0; padding-top: 16px; }
+    }
     @media (max-width: 700px) {
       .browser { display: none; }
       .basket-panel { width: 100%; border-left: none; border-top: 1px solid var(--border); }
@@ -453,7 +480,14 @@ function updateTreeSelection() {
 }
 
 // ── Welcome ────────────────────────────────────────────────────────────────
+function resetMainStyle() {
+  const main = document.getElementById("main");
+  main.style.padding = "";
+  main.style.overflow = "";
+}
+
 function showWelcome() {
+  resetMainStyle();
   const main = document.getElementById("main");
   const total = state.feeds.reduce((s, f) => s + f.eventCount + f.newsCount, 0);
   main.innerHTML = `
@@ -485,46 +519,49 @@ async function updateMain() {
   if (state.query) return;
 
   const now = Date.now();
+
+  // Left column: all items sorted descending (most recent first)
+  const recent = [...events, ...news].sort((a, b) => {
+    const da = a.type === "event" ? a.item.startDate : (a.item.publishedAt ?? a.item.fetchedAt);
+    const db = b.type === "event" ? b.item.startDate : (b.item.publishedAt ?? b.item.fetchedAt);
+    return new Date(db) - new Date(da);
+  });
+
+  // Right column: upcoming events first (asc), then future-less news (asc by publishedAt)
   const upcoming = events
     .filter(e => new Date(e.item.startDate).getTime() >= now)
     .sort((a, b) => new Date(a.item.startDate) - new Date(b.item.startDate));
-  const past = events
-    .filter(e => new Date(e.item.startDate).getTime() < now)
-    .sort((a, b) => new Date(b.item.startDate) - new Date(a.item.startDate));
-  const sortedNews = news
-    .sort((a, b) => new Date(b.item.publishedAt ?? b.item.fetchedAt) - new Date(a.item.publishedAt ?? a.item.fetchedAt));
+  const upcomingNews = news
+    .sort((a, b) => new Date(a.item.publishedAt ?? a.item.fetchedAt) - new Date(b.item.publishedAt ?? b.item.fetchedAt));
+  const future = [...upcoming, ...upcomingNews];
 
   main.innerHTML = "";
+  const cols = document.createElement("div");
+  cols.className = "feed-cols";
 
-  if (upcoming.length) {
-    main.appendChild(makeSectionHeader(`Kommende Veranstaltungen (${upcoming.length})`));
-    for (const e of upcoming) main.appendChild(makeResultCard(e.type, e.feed, e.item, ""));
-  }
+  const left = document.createElement("div");
+  left.className = "feed-col";
+  const leftHeader = document.createElement("div");
+  leftHeader.className = "col-header";
+  leftHeader.textContent = `Neueste Einträge (${recent.length})`;
+  left.appendChild(leftHeader);
+  for (const { type, feed, item } of recent) left.appendChild(makeResultCard(type, feed, item, ""));
 
-  if (sortedNews.length) {
-    main.appendChild(makeSectionHeader(`Aktuelle Nachrichten (${sortedNews.length})`));
-    for (const n of sortedNews) main.appendChild(makeResultCard(n.type, n.feed, n.item, ""));
-  }
+  const right = document.createElement("div");
+  right.className = "feed-col";
+  const rightHeader = document.createElement("div");
+  rightHeader.className = "col-header";
+  rightHeader.textContent = upcoming.length
+    ? `Nächste Veranstaltungen (${upcoming.length})`
+    : `Älteste Einträge (${future.length})`;
+  right.appendChild(rightHeader);
+  for (const { type, feed, item } of future) right.appendChild(makeResultCard(type, feed, item, ""));
 
-  if (past.length) {
-    const details = document.createElement("details");
-    details.style.marginTop = "8px";
-    const summary = document.createElement("summary");
-    summary.className = "results-header";
-    summary.style.cssText = "cursor:pointer;padding:6px 0;user-select:none;";
-    summary.textContent = `Vergangene Veranstaltungen (${past.length})`;
-    details.appendChild(summary);
-    for (const e of past) details.appendChild(makeResultCard(e.type, e.feed, e.item, ""));
-    main.appendChild(details);
-  }
-}
-
-function makeSectionHeader(text) {
-  const h = document.createElement("div");
-  h.className = "results-header";
-  h.style.cssText = "margin-top:16px;margin-bottom:8px;font-weight:600;color:var(--text);font-size:13px;border-bottom:1px solid var(--border);padding-bottom:6px;";
-  h.textContent = text;
-  return h;
+  cols.appendChild(left);
+  cols.appendChild(right);
+  main.appendChild(cols);
+  main.style.padding = "0";
+  main.style.overflow = "hidden";
 }
 
 // ── Search ─────────────────────────────────────────────────────────────────
@@ -542,6 +579,7 @@ function onSearch(query) {
 }
 
 async function runSearch(query) {
+  resetMainStyle();
   const main = document.getElementById("main");
   main.innerHTML = `<div class="state-msg"><div class="spinner"></div>&ensp;Durchsuche…</div>`;
 
