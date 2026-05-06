@@ -9,7 +9,7 @@ Weboberfläche für [amtsfeed](https://github.com/amtsfeed/amtsfeed) — eine Sa
 - **Zweispalten-Ansicht** — neueste Einträge links, kommende Veranstaltungen rechts
 - **Mein Feed** — Gemeinden auswählen und RSS/iCal-URLs kopieren
 
-Die Seite läuft vollständig im Browser, ohne Backend. Alle Daten kommen direkt aus dem [amtsfeed](https://github.com/amtsfeed/amtsfeed)-Repository via `raw.githubusercontent.com`.
+Die Seite läuft vollständig im Browser, ohne Backend. Alle Daten kommen direkt aus dem [amtsfeed](https://github.com/amtsfeed/amtsfeed)-Repository via GitHub Pages.
 
 ## Lizenz
 
