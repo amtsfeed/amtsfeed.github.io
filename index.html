@@ -149,8 +149,8 @@
       font-size: 10px; padding: 1px 5px; border-radius: 3px;
       background: var(--badge-bg); color: var(--badge-text); white-space: nowrap;
     }
-    .badge.rss { background: #fff3cd; color: #856404; }
-    .badge.ical { background: #d1e7dd; color: #0a3622; }
+    .badge.event { background: #d1e7dd; color: #0a3622; }
+    .badge.news { background: #fff3cd; color: #856404; }
     .badge.amtsblatt { background: #dde5ff; color: #2d3a8c; }
     .badge.notice { background: #f0e6ff; color: #5b21b6; }
     .filter-bar { display: flex; flex-direction: column; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
@@ -496,17 +496,10 @@ function makeFeedRow(feed) {
 
   const badges = document.createElement("span");
   badges.className = "feed-badges";
-  const total = feed.eventCount + feed.newsCount;
-  if (total > 0) {
-    const b = document.createElement("span");
-    b.className = "badge";
-    b.textContent = total;
-    badges.appendChild(b);
-  }
-  if (feed.amtsblattCount > 0) badges.appendChild(makeBadge("Amtsblatt", "amtsblatt"));
-  if (feed.noticeCount > 0) badges.appendChild(makeBadge("Bekanntm.", "notice"));
-  if (feed.hasRss) badges.appendChild(makeBadge("RSS", "rss"));
-  if (feed.hasIcal) badges.appendChild(makeBadge("iCal", "ical"));
+  if (feed.eventCount > 0) badges.appendChild(makeBadge("V", "event", `${feed.eventCount} Veranstaltungen`));
+  if (feed.newsCount > 0) badges.appendChild(makeBadge("N", "news", `${feed.newsCount} News`));
+  if (feed.amtsblattCount > 0) badges.appendChild(makeBadge("A", "amtsblatt", `${feed.amtsblattCount} Amtsblätter`));
+  if (feed.noticeCount > 0) badges.appendChild(makeBadge("B", "notice", `${feed.noticeCount} Bekanntmachungen`));
 
   row.appendChild(cb);
   row.appendChild(name);
@@ -520,10 +513,11 @@ function makeFeedRow(feed) {
   return row;
 }
 
-function makeBadge(text, cls) {
+function makeBadge(text, cls, title) {
   const b = document.createElement("span");
   b.className = `badge ${cls}`;
   b.textContent = text;
+  if (title) b.title = title;
   return b;
 }
 
@@ -819,13 +813,13 @@ function renderBasket() {
     const officialIcal = sources.find(s => s.type === "ical");
 
     const officialButtons = sources.map(s => {
-      const label = s.title ?? (s.type === "rss" ? "RSS" : "iCal");
+      const label = s.title ?? (s.type === "rss" ? "RSS Nachrichten/Amtsblätter/Bekanntmachungen" : "iCal Veranstaltungen");
       return `<button class="copy-btn copy-btn--official" data-url="${escapeHtml(s.url)}" data-label="${escapeHtml(label)}">📋 ${escapeHtml(label)}</button>`;
     }).join("");
 
     const generatedButtons = [
-      !officialRss  && feed.rssUrl  ? `<button class="copy-btn copy-btn--generated" data-url="${escapeHtml(feed.rssUrl)}"  data-label="RSS (amtsfeed)">📋 RSS</button>` : "",
-      !officialIcal && feed.icalUrl ? `<button class="copy-btn copy-btn--generated" data-url="${escapeHtml(feed.icalUrl)}" data-label="iCal (amtsfeed)">📋 iCal</button>` : "",
+      !officialRss  && feed.rssUrl  ? `<button class="copy-btn copy-btn--generated" data-url="${escapeHtml(feed.rssUrl)}"  data-label="RSS Nachrichten/Amtsblätter/Bekanntmachungen (amtsfeed)">📋 RSS Nachrichten/Amtsblätter/Bekanntmachungen</button>` : "",
+      !officialIcal && feed.icalUrl ? `<button class="copy-btn copy-btn--generated" data-url="${escapeHtml(feed.icalUrl)}" data-label="iCal Veranstaltungen (amtsfeed)">📋 iCal Veranstaltungen</button>` : "",
     ].join("");
 
     const entry = document.createElement("div");
