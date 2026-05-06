@@ -152,6 +152,7 @@
     .badge.rss { background: #fff3cd; color: #856404; }
     .badge.ical { background: #d1e7dd; color: #0a3622; }
     .badge.amtsblatt { background: #dde5ff; color: #2d3a8c; }
+    .badge.notice { background: #f0e6ff; color: #5b21b6; }
     .filter-bar { display: flex; flex-direction: column; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
     .filter-label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); cursor: pointer; user-select: none; }
     .filter-label input { accent-color: var(--primary); cursor: pointer; }
@@ -335,6 +336,7 @@
       <label class="filter-label"><input type="checkbox" id="filterEvent"      checked> Veranstaltung</label>
       <label class="filter-label"><input type="checkbox" id="filterNews"       checked> News</label>
       <label class="filter-label"><input type="checkbox" id="filterAmtsblatt"  checked> Amtsblatt</label>
+      <label class="filter-label"><input type="checkbox" id="filterNotice"     checked> Bekanntmachung</label>
     </div>
     <div id="tree"></div>
   </nav>
@@ -364,10 +366,10 @@ const state = {
   feeds: [],
   selected: new Set(),
   query: "",
-  searchData: new Map(),   // path → { events, news, amtsblatt }
+  searchData: new Map(),   // path → { events, news, amtsblatt, notices }
   searchLoading: false,
   basketOpen: false,
-  filter: { event: true, news: true, amtsblatt: true },
+  filter: { event: true, news: true, amtsblatt: true, notice: true },
 };
 
 // ── Fetch helpers ──────────────────────────────────────────────────────────
@@ -379,12 +381,13 @@ async function fetchJson(url) {
 
 async function loadFeedData(feed) {
   if (state.searchData.has(feed.path)) return state.searchData.get(feed.path);
-  const [events, news, amtsblatt] = await Promise.all([
+  const [events, news, amtsblatt, notices] = await Promise.all([
     feed.eventsUrl     ? fetchJson(feed.eventsUrl)     : null,
     feed.newsUrl       ? fetchJson(feed.newsUrl)       : null,
     feed.amtsblattUrl  ? fetchJson(feed.amtsblattUrl)  : null,
+    feed.noticesUrl    ? fetchJson(feed.noticesUrl)    : null,
   ]);
-  const data = { events: events?.items ?? [], news: news?.items ?? [], amtsblatt: amtsblatt?.items ?? [] };
+  const data = { events: events?.items ?? [], news: news?.items ?? [], amtsblatt: amtsblatt?.items ?? [], notices: notices?.items ?? [] };
   state.searchData.set(feed.path, data);
   return data;
 }
@@ -501,6 +504,7 @@ function makeFeedRow(feed) {
     badges.appendChild(b);
   }
   if (feed.amtsblattCount > 0) badges.appendChild(makeBadge("Amtsblatt", "amtsblatt"));
+  if (feed.noticeCount > 0) badges.appendChild(makeBadge("Bekanntm.", "notice"));
   if (feed.hasRss) badges.appendChild(makeBadge("RSS", "rss"));
   if (feed.hasIcal) badges.appendChild(makeBadge("iCal", "ical"));
 
@@ -599,12 +603,13 @@ async function updateMain() {
   const selectedFeeds = state.feeds.filter(f => state.selected.has(f.path));
   const events = [], news = [];
 
-  const amtsblatt = [];
+  const amtsblatt = [], notices = [];
   await Promise.all(selectedFeeds.map(async (feed) => {
     const data = await loadFeedData(feed);
     for (const ev of data.events)    events.push({ type: "event",      feed, item: ev });
     for (const n of data.news)       news.push({ type: "news",        feed, item: n });
     for (const a of data.amtsblatt)  amtsblatt.push({ type: "amtsblatt", feed, item: a });
+    for (const c of data.notices)    notices.push({ type: "notice",    feed, item: c });
   }));
 
   if (state.query) return;
@@ -617,6 +622,7 @@ async function updateMain() {
     ...(state.filter.event     ? pastEvents  : []),
     ...(state.filter.news      ? news        : []),
     ...(state.filter.amtsblatt ? amtsblatt   : []),
+    ...(state.filter.notice    ? notices     : []),
   ].sort((a, b) => {
     const da = a.type === "event" ? a.item.startDate : (a.item.publishedAt ?? a.item.fetchedAt);
     const db = b.type === "event" ? b.item.startDate : (b.item.publishedAt ?? b.item.fetchedAt);
@@ -695,6 +701,9 @@ async function runSearch(query) {
     if (state.filter.amtsblatt) for (const a of data.amtsblatt) {
       if (matches(a.title, null, null, q)) results.push({ type: "amtsblatt", feed, item: a });
     }
+    if (state.filter.notice) for (const c of data.notices) {
+      if (matches(c.title, null, null, q)) results.push({ type: "notice", feed, item: c });
+    }
   }));
 
   if (state.query !== query) return; // stale
@@ -739,7 +748,7 @@ function makeResultCard(type, feed, item, query) {
     ? item.startDate
     : (item.publishedAt ?? item.fetchedAt);
   const dateStr = date ? new Date(date).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }) : "";
-  const typeLabel = type === "event" ? "Veranstaltung" : type === "amtsblatt" ? "Amtsblatt" : "Nachricht";
+  const typeLabel = type === "event" ? "Veranstaltung" : type === "amtsblatt" ? "Amtsblatt" : type === "notice" ? "Bekanntmachung" : "Nachricht";
 
   card.innerHTML = `
     <div class="result-meta">
@@ -913,12 +922,14 @@ function onFilterChange() {
   state.filter.event     = document.getElementById("filterEvent").checked;
   state.filter.news      = document.getElementById("filterNews").checked;
   state.filter.amtsblatt = document.getElementById("filterAmtsblatt").checked;
+  state.filter.notice    = document.getElementById("filterNotice").checked;
   if (state.query) runSearch(state.query);
   else updateMain();
 }
 document.getElementById("filterEvent").addEventListener("change", onFilterChange);
 document.getElementById("filterNews").addEventListener("change", onFilterChange);
 document.getElementById("filterAmtsblatt").addEventListener("change", onFilterChange);
+document.getElementById("filterNotice").addEventListener("change", onFilterChange);
 
 // ── Boot ───────────────────────────────────────────────────────────────────
 init();
